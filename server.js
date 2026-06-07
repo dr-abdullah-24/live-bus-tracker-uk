@@ -16,16 +16,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 const operatorCache = new Map();
 
 async function preloadOperators() {
-    let nextUrl = `${BODS_BASE}/operators/?limit=100`;
+    // Operator names live on the dataset endpoint (operatorName + noc fields)
+    let nextUrl = `${BODS_BASE}/dataset/?limit=100&status=published`;
     let pages = 0;
     try {
-        while (nextUrl && pages < 20) {
+        while (nextUrl && pages < 30) {
             const res = await axios.get(nextUrl, {
                 headers: { Authorization: `Token ${API_KEY}` },
                 timeout: 15000,
             });
-            (res.data?.results || []).forEach(op => {
-                if (op.noc) operatorCache.set(op.noc, op.name || op.short_name || op.noc);
+            (res.data?.results || []).forEach(ds => {
+                const name = ds.operatorName;
+                const nocs = Array.isArray(ds.noc) ? ds.noc : ds.noc ? [ds.noc] : [];
+                if (name) nocs.forEach(n => { if (!operatorCache.has(n)) operatorCache.set(n, name); });
             });
             nextUrl = res.data?.next || null;
             pages++;
