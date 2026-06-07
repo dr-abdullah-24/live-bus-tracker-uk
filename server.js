@@ -2,7 +2,32 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const xml2js = require('xml2js');
+const AdmZip = require('adm-zip');
 const path = require('path');
+
+// Ticket type codes embedded in NeTEx filenames → human-readable labels
+const TICKET_LABELS = {
+    ADSGL:          'Adult Single',
+    ADSGLREF:       'Adult Single (ref)',
+    CHSGL:          'Child Single',
+    CHSGLREF:       'Child Single (ref)',
+    CHSGLIGO:       'Child Single (App)',
+    ADRTN:          'Adult Return',
+    ADRTNKNOWLEDGE: 'Adult Return',
+    CHRTN:          'Child Return',
+    '1Day':         'Day Ticket',
+    '3Day':         '3-Day Pass',
+    '7Day':         '7-Day Pass',
+    '1Week':        'Weekly Pass',
+    '4Week':        '4-Week Pass',
+    '1Month':       'Monthly Pass',
+    '1Return':      'Return Ticket',
+    '1OneWay':      'Network Single',
+};
+const LABEL_ORDER = ['ADSGL','CHSGL','ADRTN','ADRTNKNOWLEDGE','CHRTN','1Return','1OneWay','1Day','3Day','7Day','1Week','4Week','1Month','ADSGLREF','CHSGLREF','CHSGLIGO'];
+
+// Cache: operator NOC / dataset ID → { data, ts }  (2-hour TTL)
+const farePriceCache = new Map();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -160,6 +185,90 @@ app.get('/api/route-plan', async (req, res) => {
         res.json({ routes, totalVehicles: vehicles.length });
     } catch (err) {
         console.error('Route plan error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Actual fare prices parsed from NeTEx ZIP for an operator (NOC code)
+app.get('/api/fare-prices', async (req, res) => {
+    const { noc } = req.query;
+    if (!noc) return res.status(400).json({ error: 'noc required' });
+
+    const cached = farePriceCache.get(noc);
+    if (cached && Date.now() - cached.ts < 2 * 60 * 60 * 1000) return res.json(cached.data);
+
+    try {
+        // Find fare datasets for this operator
+        const dsResp = await axios.get(`${BODS_BASE}/fares/dataset/`, {
+            headers: { Authorization: `Token ${API_KEY}` },
+            params: { noc, status: 'published', limit: 10 },
+            timeout: 10000,
+        });
+        const datasets = dsResp.data?.results || [];
+        if (!datasets.length) return res.json({ fares: [], note: 'No fare data published for this operator.' });
+
+        // Pick the dataset whose description specifically mentions this NOC
+        const best = datasets.find(d => d.description?.includes(`(${noc})`))
+                  || datasets.find(d => d.noc?.length === 1)
+                  || datasets[0];
+
+        // Check dataset-level cache
+        const dsCached = farePriceCache.get(best.id);
+        if (dsCached && Date.now() - dsCached.ts < 2 * 60 * 60 * 1000) {
+            farePriceCache.set(noc, { data: dsCached.data, ts: dsCached.ts });
+            return res.json(dsCached.data);
+        }
+
+        // Download the NeTEx ZIP (can be 20-100MB; cached after first fetch)
+        const zipResp = await axios.get(best.url, {
+            responseType: 'arraybuffer',
+            headers: { Authorization: `Token ${API_KEY}` },
+            timeout: 90000,
+            maxContentLength: 200 * 1024 * 1024,
+        });
+
+        const zip = new AdmZip(Buffer.from(zipResp.data));
+        const seenTypes = new Set();
+        const pricesByType = {};
+
+        for (const entry of zip.getEntries()) {
+            // Filename: {NOC}_{Line}_{Dir}_{TicketType}_{...}.xml
+            const parts = entry.name.split('_');
+            const ticketType = parts[3];
+            if (!ticketType || seenTypes.has(ticketType) || !entry.name.endsWith('.xml')) continue;
+            seenTypes.add(ticketType);
+
+            const xml = entry.getData().toString('utf8');
+            const amounts = [...xml.matchAll(/<Amount>([\d.]+)<\/Amount>/g)]
+                .map(m => parseFloat(m[1])).filter(v => v > 0 && v < 500);
+            if (!amounts.length) continue;
+
+            const unique = [...new Set(amounts)].sort((a, b) => a - b);
+            pricesByType[ticketType] = { min: unique[0], max: unique[unique.length - 1] };
+        }
+
+        // Build ordered fare table
+        const fares = [
+            ...LABEL_ORDER.filter(t => pricesByType[t]).map(t => ({
+                label: TICKET_LABELS[t], min: pricesByType[t].min, max: pricesByType[t].max,
+            })),
+            // Any unknown types not in LABEL_ORDER
+            ...Object.entries(pricesByType)
+                .filter(([t]) => !LABEL_ORDER.includes(t) && TICKET_LABELS[t])
+                .map(([t, v]) => ({ label: TICKET_LABELS[t], min: v.min, max: v.max })),
+        ];
+
+        const result = {
+            operatorName: best.operatorName || operatorCache.get(noc) || noc,
+            description: best.description,
+            currency: 'GBP',
+            fares,
+        };
+        farePriceCache.set(noc, { data: result, ts: Date.now() });
+        farePriceCache.set(best.id, { data: result, ts: Date.now() });
+        res.json(result);
+    } catch (err) {
+        console.error('Fare price error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });

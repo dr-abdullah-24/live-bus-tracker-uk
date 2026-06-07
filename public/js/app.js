@@ -205,19 +205,17 @@ window.toggleFares = async function toggleFares(e, noc, idx) {
     const chevron = document.getElementById(`chevron-${idx}`);
     if (!panel) return;
 
-    // Toggle collapse
     if (panel.classList.contains('open')) {
         panel.classList.remove('open');
         chevron.textContent = '▼';
         return;
     }
-
     panel.classList.add('open');
     chevron.textContent = '▲';
 
-    if (panel.dataset.loaded) return; // already fetched
+    if (panel.dataset.loaded) return;
     panel.dataset.loaded = '1';
-    panel.innerHTML = '<div class="fare-loading">Loading fares…</div>';
+    panel.innerHTML = '<div class="fare-loading">Fetching fare prices… (first load may take a few seconds)</div>';
 
     if (!noc || noc === 'undefined') {
         panel.innerHTML = '<p class="fare-inline-msg">No operator code for this route.</p>';
@@ -225,31 +223,27 @@ window.toggleFares = async function toggleFares(e, noc, idx) {
     }
 
     try {
-        const data = await API.getFares(noc);
-        if (!data.datasets?.length) {
-            panel.innerHTML = '<p class="fare-inline-msg">No fare data published for this operator.</p>';
+        const data = await API.getFarePrices(noc);
+
+        if (data.note || !data.fares?.length) {
+            panel.innerHTML = `<p class="fare-inline-msg">${esc(data.note || 'No fare prices available.')}</p>`;
             return;
         }
 
-        panel.innerHTML = data.datasets.map(f => {
-            const updated = f.updated ? new Date(f.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
-            const stats = [
-                f.numOfLines ? `${f.numOfLines} lines` : null,
-                f.numOfFareProducts ? `${f.numOfFareProducts} products` : null,
-                f.numOfUserTypes ? `${f.numOfUserTypes} user types` : null,
-            ].filter(Boolean).join(' · ');
-
-            return `<div class="fare-dataset">
-                <div class="fare-desc">${esc(f.description || f.operatorName || 'Fare dataset')}</div>
-                ${stats ? `<div class="fare-stats">${stats}</div>` : ''}
-                <div class="fare-foot">
-                    ${updated ? `<span class="fare-updated">Updated ${updated}</span>` : ''}
-                    ${f.url ? `<a class="fare-dl" href="${esc(f.url)}" target="_blank" rel="noopener">Download NeTEx</a>` : ''}
-                </div>
-            </div>`;
+        const fmt = n => `£${n.toFixed(2)}`;
+        const rows = data.fares.map(f => {
+            const price = f.min === f.max ? fmt(f.min) : `${fmt(f.min)} – ${fmt(f.max)}`;
+            return `<tr><td class="fare-label">${esc(f.label)}</td><td class="fare-price">${price}</td></tr>`;
         }).join('');
+
+        panel.innerHTML = `
+            <div class="fare-source">${esc(data.description || data.operatorName || '')}</div>
+            <table class="fare-table">
+                <thead><tr><th>Ticket</th><th>Price (GBP)</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
     } catch (_) {
-        panel.innerHTML = '<p class="fare-inline-msg">Failed to load fare data.</p>';
+        panel.innerHTML = '<p class="fare-inline-msg">Failed to load fare prices.</p>';
     }
 };
 

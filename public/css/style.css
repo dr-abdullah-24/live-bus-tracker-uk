@@ -143,18 +143,16 @@ input[type="text"]::placeholder { color: var(--text-dim); }
 }
 .fare-inline.open { display: block; }
 
-.fare-dataset {
-  padding: 8px 0; border-bottom: 1px solid var(--border);
-}
-.fare-dataset:last-child { border-bottom: none; padding-bottom: 0; }
-.fare-desc { font-size: 12px; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
-.fare-stats { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
-.fare-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.fare-updated { font-size: 11px; color: var(--text-dim); }
-.fare-dl {
-  font-size: 11px; color: var(--accent); text-decoration: none; white-space: nowrap;
-}
-.fare-dl:hover { text-decoration: underline; }
+.fare-source { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; line-height: 1.4; }
+
+.fare-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fare-table thead tr { border-bottom: 1px solid var(--border); }
+.fare-table th { color: var(--text-dim); font-weight: 600; text-align: left; padding: 3px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+.fare-table tbody tr { border-bottom: 1px solid rgba(48,54,61,0.5); }
+.fare-table tbody tr:last-child { border-bottom: none; }
+.fare-label { color: var(--text); padding: 5px 4px; }
+.fare-price { color: var(--green); font-weight: 600; text-align: right; padding: 5px 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
 .fare-loading, .fare-inline-msg { font-size: 12px; color: var(--text-dim); padding: 4px 0; }
 
 .no-results { font-size: 13px; color: var(--text-dim); text-align: center; padding: 20px 0; line-height: 1.6; }

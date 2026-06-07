@@ -39,6 +39,14 @@ const API = {
         return res.json();
     },
 
+    async getFarePrices(noc) {
+        const url = new URL('/api/fare-prices', location.origin);
+        url.searchParams.set('noc', noc);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Fare prices error ${res.status}`);
+        return res.json();
+    },
+
     async getFares(operator) {
         const url = new URL('/api/fares', location.origin);
         if (operator) url.searchParams.set('operator', operator);
