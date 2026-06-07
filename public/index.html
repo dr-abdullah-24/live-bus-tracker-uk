@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UK Live Bus Tracker</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- Top navbar -->
+    <header id="navbar">
+      <div id="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="1" y="6" width="22" height="13" rx="2"/>
+          <path d="M16 6V4a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v2"/>
+          <circle cx="7" cy="19" r="1"/><circle cx="17" cy="19" r="1"/>
+          <line x1="12" y1="6" x2="12" y2="19"/>
+        </svg>
+        UK Live Bus Tracker
+      </div>
+      <div id="nav-right">
+        <span id="vehicle-count" class="stat-badge">Loading...</span>
+        <button id="refresh-btn" class="icon-btn" title="Refresh buses">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+        <span id="last-updated"></span>
+      </div>
+    </header>
+
+    <div id="content">
+
+      <!-- Sidebar -->
+      <aside id="sidebar">
+
+        <div id="search-panel">
+          <h2 class="panel-title">Plan Your Journey</h2>
+
+          <div class="input-group">
+            <label>From</label>
+            <div class="autocomplete-wrap">
+              <input id="origin-input" type="text" placeholder="e.g. Manchester Piccadilly" autocomplete="off" />
+              <ul id="origin-suggestions" class="suggestions"></ul>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>To</label>
+            <div class="autocomplete-wrap">
+              <input id="dest-input" type="text" placeholder="e.g. Leeds City Centre" autocomplete="off" />
+              <ul id="dest-suggestions" class="suggestions"></ul>
+            </div>
+          </div>
+
+          <button id="search-btn">Find Routes</button>
+          <button id="clear-btn" class="secondary-btn">Clear</button>
+        </div>
+
+        <div id="results-panel" style="display:none">
+          <h3 class="section-title">Suggested Routes</h3>
+          <div id="results-container"></div>
+        </div>
+
+        <div id="fares-panel" style="display:none">
+          <div class="fares-header">
+            <h3 class="section-title">Fare Information</h3>
+            <button id="close-fares" class="icon-btn small">&#x2715;</button>
+          </div>
+          <div id="fares-content"></div>
+        </div>
+
+        <div id="sidebar-footer">
+          <p>Live data from <a href="https://www.bus-data.dft.gov.uk/" target="_blank">Bus Open Data Service</a></p>
+          <p>Maps &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a></p>
+        </div>
+      </aside>
+
+      <!-- Map -->
+      <main id="map-container">
+        <div id="map"></div>
+        <div id="map-loading">
+          <div class="spinner"></div>
+          <span>Loading live buses&hellip;</span>
+        </div>
+        <div id="error-toast"></div>
+      </main>
+
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

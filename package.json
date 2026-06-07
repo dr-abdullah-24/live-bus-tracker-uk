@@ -1,0 +1,19 @@
+{
+  "name": "live-bus-tracker-uk",
+  "version": "1.0.0",
+  "description": "Live UK bus tracker using the Bus Open Data Service",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
