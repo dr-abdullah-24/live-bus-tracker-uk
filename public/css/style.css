@@ -128,24 +128,36 @@ input[type="text"]::placeholder { color: var(--text-dim); }
 
 .route-meta { display: flex; align-items: center; justify-content: space-between; }
 .distance-badge { font-size: 11px; color: var(--text-dim); }
-.fare-btn {
+.fare-toggle-btn {
   font-size: 11px; background: none; border: 1px solid var(--border);
-  color: var(--text-dim); border-radius: 5px; padding: 3px 8px; cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  color: var(--text-dim); border-radius: 5px; padding: 3px 9px; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s; white-space: nowrap;
 }
-.fare-btn:hover { color: var(--orange); border-color: var(--orange); }
+.fare-toggle-btn:hover { color: var(--orange); border-color: var(--orange); }
+.fare-chevron { font-size: 9px; margin-left: 2px; }
+
+/* Inline fare section inside route card */
+.fare-inline {
+  display: none; border-top: 1px solid var(--border);
+  margin-top: 10px; padding-top: 10px;
+}
+.fare-inline.open { display: block; }
+
+.fare-dataset {
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.fare-dataset:last-child { border-bottom: none; padding-bottom: 0; }
+.fare-desc { font-size: 12px; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
+.fare-stats { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+.fare-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.fare-updated { font-size: 11px; color: var(--text-dim); }
+.fare-dl {
+  font-size: 11px; color: var(--accent); text-decoration: none; white-space: nowrap;
+}
+.fare-dl:hover { text-decoration: underline; }
+.fare-loading, .fare-inline-msg { font-size: 12px; color: var(--text-dim); padding: 4px 0; }
 
 .no-results { font-size: 13px; color: var(--text-dim); text-align: center; padding: 20px 0; line-height: 1.6; }
-
-/* ── Fares panel ── */
-#fares-panel { padding: 16px; border-bottom: 1px solid var(--border); }
-.fares-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.fare-item { background: var(--card); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border); }
-.fare-name { font-size: 13px; color: var(--text-bright); margin-bottom: 3px; font-weight: 500; }
-.fare-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
-.fare-link { font-size: 12px; color: var(--accent); text-decoration: none; }
-.fare-link:hover { text-decoration: underline; }
-.no-fares, .fare-error { font-size: 13px; color: var(--text-dim); padding: 8px 0; }
 
 /* ── Sidebar footer ── */
 #sidebar-footer { margin-top: auto; padding: 12px 16px; font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); line-height: 1.7; }
@@ -194,12 +206,6 @@ input[type="text"]::placeholder { color: var(--text-dim); }
 .popup-journey { font-size: 13px; color: var(--text); margin-bottom: 10px; line-height: 1.5; }
 .popup-meta { font-size: 12px; color: var(--text-dim); line-height: 1.8; }
 .popup-time { margin-top: 4px; font-size: 11px; color: var(--border); }
-.popup-fare-btn {
-  margin-top: 10px; width: 100%; background: none; border: 1px solid var(--border);
-  color: var(--text-dim); border-radius: 6px; padding: 6px; cursor: pointer;
-  font-size: 12px; transition: color 0.2s, border-color 0.2s;
-}
-.popup-fare-btn:hover { color: var(--orange); border-color: var(--orange); }
 
 /* Leaflet controls dark theme */
 .leaflet-control-zoom a {

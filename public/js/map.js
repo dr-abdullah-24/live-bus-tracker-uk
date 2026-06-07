@@ -41,7 +41,6 @@ function vehiclePopupHtml(v) {
                 ${v.occupancy ? `<div>Occupancy: <strong>${v.occupancy}</strong></div>` : ''}
             </div>
             <div class="popup-time">Updated: ${recorded}</div>
-            <button class="popup-fare-btn" onclick="loadFares('${v.operatorRef}')">View Fares</button>
         </div>`;
 }
 

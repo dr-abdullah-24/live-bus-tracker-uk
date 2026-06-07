@@ -184,7 +184,7 @@ app.get('/api/route-shape', async (req, res) => {
     }
 });
 
-// Fares datasets for an operator (NOC code)
+// Fares datasets for an operator (NOC code) — returns cleaned-up summary
 app.get('/api/fares', async (req, res) => {
     try {
         const { operator } = req.query;
@@ -196,7 +196,19 @@ app.get('/api/fares', async (req, res) => {
             params,
             timeout: 10000,
         });
-        res.json(response.data);
+
+        const datasets = (response.data?.results || []).map(f => ({
+            id: f.id,
+            operatorName: f.operatorName || operatorCache.get(operator) || operator,
+            description: f.description || f.name,
+            updated: f.modified || f.created || null,
+            numOfLines: f.numOfLines,
+            numOfFareProducts: f.numOfFareProducts,
+            numOfUserTypes: f.numOfUserTypes,
+            url: f.url,
+        }));
+
+        res.json({ count: response.data.count, datasets });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

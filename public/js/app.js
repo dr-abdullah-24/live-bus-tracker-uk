@@ -16,9 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('refresh-btn').addEventListener('click', () => loadVehicles(true));
     document.getElementById('search-btn').addEventListener('click', searchRoutes);
     document.getElementById('clear-btn').addEventListener('click', clearSearch);
-    document.getElementById('close-fares').addEventListener('click', () => {
-        document.getElementById('fares-panel').style.display = 'none';
-    });
 
     setupAutocomplete('origin-input', 'origin-suggestions', place => {
         selectedOrigin = { lat: +place.lat, lon: +place.lon, name: place.display_name };
@@ -163,8 +160,11 @@ function displayRoutes(routes) {
             </div>
             <div class="route-meta">
                 <span class="distance-badge">~${r.distFromOrigin?.toFixed(1)} km from origin</span>
-                <button class="fare-btn" onclick="loadFares(event, '${esc(r.operatorRef)}')">Fares</button>
+                <button class="fare-toggle-btn" onclick="toggleFares(event, '${esc(r.operatorRef)}', ${i})">
+                    Fares <span class="fare-chevron" id="chevron-${i}">▼</span>
+                </button>
             </div>
+            <div class="fare-inline" id="fare-inline-${i}"></div>
         </div>`;
     }).join('');
 }
@@ -197,45 +197,59 @@ window.selectRoute = async function selectRoute(lineRef, lineName, idx) {
     }
 };
 
-// ── Fares ─────────────────────────────────────────────────────────────────────
-window.loadFares = async function loadFares(eventOrOperator, operatorRef) {
-    let noc;
-    if (typeof eventOrOperator === 'string') {
-        noc = eventOrOperator;
-    } else {
-        eventOrOperator.stopPropagation();
-        noc = operatorRef;
-    }
+// ── Fares (inline per route card) ─────────────────────────────────────────────
+window.toggleFares = async function toggleFares(e, noc, idx) {
+    e.stopPropagation();
 
-    if (!noc || noc === 'undefined') {
-        showError('No operator code available for this bus.');
+    const panel = document.getElementById(`fare-inline-${idx}`);
+    const chevron = document.getElementById(`chevron-${idx}`);
+    if (!panel) return;
+
+    // Toggle collapse
+    if (panel.classList.contains('open')) {
+        panel.classList.remove('open');
+        chevron.textContent = '▼';
         return;
     }
 
-    const panel = document.getElementById('fares-panel');
-    const content = document.getElementById('fares-content');
-    panel.style.display = 'block';
-    content.innerHTML = '<div class="no-fares">Loading fare data…</div>';
+    panel.classList.add('open');
+    chevron.textContent = '▲';
+
+    if (panel.dataset.loaded) return; // already fetched
+    panel.dataset.loaded = '1';
+    panel.innerHTML = '<div class="fare-loading">Loading fares…</div>';
+
+    if (!noc || noc === 'undefined') {
+        panel.innerHTML = '<p class="fare-inline-msg">No operator code for this route.</p>';
+        return;
+    }
 
     try {
         const data = await API.getFares(noc);
-        const results = data.results || [];
-        if (!results.length) {
-            content.innerHTML = `<p class="no-fares">No published fare datasets for <strong>${esc(noc)}</strong>.</p>`;
+        if (!data.datasets?.length) {
+            panel.innerHTML = '<p class="fare-inline-msg">No fare data published for this operator.</p>';
             return;
         }
-        content.innerHTML = results.map(f => {
-            const updated = (f.modified_date || f.published_at)
-                ? new Date(f.modified_date || f.published_at).toLocaleDateString('en-GB')
-                : 'Unknown';
-            return `<div class="fare-item">
-                <div class="fare-name">${esc(f.name || 'Fare Dataset')}</div>
-                <div class="fare-meta">Operator: <strong>${esc(noc)}</strong> &bull; Updated: ${updated}</div>
-                ${f.url ? `<a class="fare-link" href="${esc(f.url)}" target="_blank" rel="noopener">Download NeTEx Fare Data &rarr;</a>` : ''}
+
+        panel.innerHTML = data.datasets.map(f => {
+            const updated = f.updated ? new Date(f.updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+            const stats = [
+                f.numOfLines ? `${f.numOfLines} lines` : null,
+                f.numOfFareProducts ? `${f.numOfFareProducts} products` : null,
+                f.numOfUserTypes ? `${f.numOfUserTypes} user types` : null,
+            ].filter(Boolean).join(' · ');
+
+            return `<div class="fare-dataset">
+                <div class="fare-desc">${esc(f.description || f.operatorName || 'Fare dataset')}</div>
+                ${stats ? `<div class="fare-stats">${stats}</div>` : ''}
+                <div class="fare-foot">
+                    ${updated ? `<span class="fare-updated">Updated ${updated}</span>` : ''}
+                    ${f.url ? `<a class="fare-dl" href="${esc(f.url)}" target="_blank" rel="noopener">Download NeTEx</a>` : ''}
+                </div>
             </div>`;
         }).join('');
-    } catch (err) {
-        content.innerHTML = '<p class="fare-error">Failed to load fare information.</p>';
+    } catch (_) {
+        panel.innerHTML = '<p class="fare-inline-msg">Failed to load fare data.</p>';
     }
 };
 
@@ -248,7 +262,6 @@ function clearSearch() {
     document.getElementById('origin-input').value = '';
     document.getElementById('dest-input').value = '';
     document.getElementById('results-panel').style.display = 'none';
-    document.getElementById('fares-panel').style.display = 'none';
     clearRouteMarkers();
     clearRoutePath();
     renderVehicles(lastVehicles, [], null);
