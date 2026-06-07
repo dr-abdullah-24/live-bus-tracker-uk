@@ -12,6 +12,30 @@ const BODS_BASE = 'https://data.bus-data.dft.gov.uk/api/v1';
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// NOC code → full operator name, populated on startup
+const operatorCache = new Map();
+
+async function preloadOperators() {
+    let nextUrl = `${BODS_BASE}/operators/?limit=100`;
+    let pages = 0;
+    try {
+        while (nextUrl && pages < 20) {
+            const res = await axios.get(nextUrl, {
+                headers: { Authorization: `Token ${API_KEY}` },
+                timeout: 15000,
+            });
+            (res.data?.results || []).forEach(op => {
+                if (op.noc) operatorCache.set(op.noc, op.name || op.short_name || op.noc);
+            });
+            nextUrl = res.data?.next || null;
+            pages++;
+        }
+        console.log(`Operators cached: ${operatorCache.size}`);
+    } catch (err) {
+        console.warn('Operator preload failed (NOC codes will show instead of names):', err.message);
+    }
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -29,11 +53,13 @@ function extractVehicles(delivery) {
     return items.map(v => {
         const j = v?.MonitoredVehicleJourney || {};
         const loc = j?.VehicleLocation || {};
+        const noc = j.OperatorRef;
         return {
             vehicleRef: j.VehicleRef,
             lineRef: j.LineRef,
             lineName: j.PublishedLineName,
-            operatorRef: j.OperatorRef,
+            operatorRef: noc,
+            operatorName: operatorCache.get(noc) || noc,
             origin: j.OriginName,
             destination: j.DestinationName,
             lat: parseFloat(loc.Latitude),
@@ -75,7 +101,7 @@ app.get('/api/vehicles', async (req, res) => {
     }
 });
 
-// Geocode via Nominatim (proxied to avoid CORS + add correct User-Agent)
+// Geocode via Nominatim
 app.get('/api/geocode', async (req, res) => {
     try {
         const { q, limit = 5 } = req.query;
@@ -90,14 +116,13 @@ app.get('/api/geocode', async (req, res) => {
     }
 });
 
-// Route planner: geocode origin+dest, fetch vehicles in bbox, score and rank
+// Route planner: score and rank live vehicles between origin and destination
 app.get('/api/route-plan', async (req, res) => {
     try {
         const { originLat, originLon, destLat, destLon, destName } = req.query;
         const oLat = parseFloat(originLat), oLon = parseFloat(originLon);
         const dLat = parseFloat(destLat), dLon = parseFloat(destLon);
 
-        // Expand bbox slightly beyond the two points
         const pad = 0.15;
         const bbox = [
             Math.min(oLon, dLon) - pad,
@@ -107,29 +132,20 @@ app.get('/api/route-plan', async (req, res) => {
         ].join(',');
 
         const vehicles = await fetchVehiclesFromBODS({ boundingBox: bbox });
-
         const destWords = (destName || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
 
         const scored = vehicles.map(v => {
             const distOrigin = haversineKm(v.lat, v.lon, oLat, oLon);
             const vDest = (v.destination || '').toLowerCase();
             const vOrig = (v.origin || '').toLowerCase();
-
-            // Text similarity to destination
             const textScore = destWords.filter(w => w.length > 2 && (vDest.includes(w) || vOrig.includes(w))).length;
-
-            // Is the vehicle currently near the origin?
             const nearOrigin = distOrigin < 5 ? 2 : distOrigin < 15 ? 1 : 0;
-
-            // Is the vehicle roughly heading toward destination?
             const idealBearing = (Math.atan2(dLon - oLon, dLat - oLat) * 180 / Math.PI + 360) % 360;
             const diff = Math.abs(v.bearing - idealBearing);
             const bearingScore = (diff < 60 || diff > 300) ? 1 : 0;
-
             return { ...v, distFromOrigin: distOrigin, score: nearOrigin + textScore * 2 + bearingScore };
         }).filter(v => v.score > 0).sort((a, b) => b.score - a.score);
 
-        // One entry per unique line
         const seen = new Set();
         const routes = scored.filter(v => {
             const key = `${v.lineRef}|${v.operatorRef}`;
@@ -141,6 +157,26 @@ app.get('/api/route-plan', async (req, res) => {
         res.json({ routes, totalVehicles: vehicles.length });
     } catch (err) {
         console.error('Route plan error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Road path between two coordinates via OSRM (approximate driving route)
+app.get('/api/route-shape', async (req, res) => {
+    try {
+        const { originLat, originLon, destLat, destLon } = req.query;
+        const coords = `${originLon},${originLat};${destLon},${destLat}`;
+        const response = await axios.get(
+            `https://router.project-osrm.org/route/v1/driving/${coords}`,
+            { params: { overview: 'full', geometries: 'geojson' }, timeout: 10000 }
+        );
+        const route = response.data.routes?.[0];
+        res.json({
+            geometry: route?.geometry,
+            distanceM: route?.distance,
+            durationS: route?.duration,
+        });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
@@ -163,13 +199,12 @@ app.get('/api/fares', async (req, res) => {
     }
 });
 
-// Operators list
+// Operators list (used for search/filter UI if needed)
 app.get('/api/operators', async (req, res) => {
     try {
         const { search, limit = 30 } = req.query;
         const params = { limit };
         if (search) params.search = search;
-
         const response = await axios.get(`${BODS_BASE}/operators/`, {
             headers: { Authorization: `Token ${API_KEY}` },
             params,
@@ -184,4 +219,5 @@ app.get('/api/operators', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Live Bus Tracker running at http://localhost:${PORT}`);
     console.log(`BODS API key: ${API_KEY ? 'configured' : 'MISSING - set BODS_API_KEY in .env'}`);
+    preloadOperators();
 });

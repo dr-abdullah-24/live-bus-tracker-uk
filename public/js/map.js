@@ -1,8 +1,9 @@
 let _map = null;
 let _clusterLayer = null;
 let _currentVehicles = [];
+let _routePath = null;
 
-function busIcon(bearing, color = '#58a6ff', opacity = 1) {
+function busIcon(bearing, color, opacity) {
     const rot = (bearing - 45 + 360) % 360;
     return L.divIcon({
         className: '',
@@ -24,6 +25,9 @@ function busIcon(bearing, color = '#58a6ff', opacity = 1) {
 function vehiclePopupHtml(v) {
     const line = v.lineName || v.lineRef || '?';
     const recorded = v.recordedAt ? new Date(v.recordedAt).toLocaleTimeString() : '—';
+    const opLabel = v.operatorName && v.operatorName !== v.operatorRef
+        ? `${v.operatorName} (${v.operatorRef})`
+        : (v.operatorRef || '—');
     return `
         <div class="bus-popup">
             <div class="popup-line-badge">${line}</div>
@@ -33,8 +37,7 @@ function vehiclePopupHtml(v) {
                 <strong>${v.destination || '?'}</strong>
             </div>
             <div class="popup-meta">
-                <div>Operator: <strong>${v.operatorRef || '—'}</strong></div>
-                ${v.bearing ? `<div>Bearing: <strong>${Math.round(v.bearing)}&deg;</strong></div>` : ''}
+                <div>Operator: <strong>${opLabel}</strong></div>
                 ${v.occupancy ? `<div>Occupancy: <strong>${v.occupancy}</strong></div>` : ''}
             </div>
             <div class="popup-time">Updated: ${recorded}</div>
@@ -97,16 +100,34 @@ function getMapBbox() {
     ].join(',');
 }
 
-function renderVehicles(vehicles, highlightLineRef = null) {
+/**
+ * Render vehicles with three visual states:
+ *  - no search active:     all blue, full opacity
+ *  - search done:          suggested=amber, unrelated=very dimmed
+ *  - route selected:       selected=red, suggested=amber, unrelated=very dimmed
+ */
+function renderVehicles(vehicles, suggestedRefs, selectedRef) {
     _currentVehicles = vehicles;
     _clusterLayer.clearLayers();
 
+    const suggested = new Set(suggestedRefs || []);
+    const hasFilter = suggested.size > 0 || selectedRef;
+
     vehicles.forEach(v => {
-        const isHighlighted = highlightLineRef && (v.lineRef === highlightLineRef || v.lineName === highlightLineRef);
-        const color = highlightLineRef
-            ? (isHighlighted ? '#f85149' : '#58a6ff')
-            : '#58a6ff';
-        const opacity = highlightLineRef && !isHighlighted ? 0.25 : 1;
+        const key = v.lineRef || v.lineName;
+        const isSuggested = suggested.has(key);
+        const isSelected = !!selectedRef && key === selectedRef;
+
+        let color, opacity;
+        if (!hasFilter) {
+            color = '#58a6ff'; opacity = 1;
+        } else if (isSelected) {
+            color = '#f85149'; opacity = 1;        // red
+        } else if (isSuggested) {
+            color = '#d29922'; opacity = 0.9;      // amber
+        } else {
+            color = '#58a6ff'; opacity = 0.1;      // ghost
+        }
 
         const marker = L.marker([v.lat, v.lon], { icon: busIcon(v.bearing, color, opacity) });
         marker.bindPopup(vehiclePopupHtml(v), { maxWidth: 280 });
@@ -114,12 +135,23 @@ function renderVehicles(vehicles, highlightLineRef = null) {
     });
 }
 
-function highlightRoute(lineRef) {
-    renderVehicles(_currentVehicles, lineRef);
+// Draw the road path (GeoJSON LineString from OSRM) for the selected route
+function drawRoutePath(geojson) {
+    clearRoutePath();
+    if (!geojson || !_map) return;
+    _routePath = L.geoJSON(geojson, {
+        style: {
+            color: '#f85149',
+            weight: 5,
+            opacity: 0.75,
+            lineJoin: 'round',
+            lineCap: 'round',
+        },
+    }).addTo(_map);
 }
 
-function clearHighlight() {
-    renderVehicles(_currentVehicles, null);
+function clearRoutePath() {
+    if (_routePath) { _routePath.remove(); _routePath = null; }
 }
 
 function panTo(lat, lon, zoom = 13) {
@@ -129,15 +161,17 @@ function panTo(lat, lon, zoom = 13) {
 function addOriginMarker(lat, lon, label) {
     if (window._originMarker) window._originMarker.remove();
     window._originMarker = L.circleMarker([lat, lon], {
-        radius: 8, color: '#3fb950', fillColor: '#3fb950', fillOpacity: 0.9, weight: 2,
-    }).bindTooltip(label, { permanent: false }).addTo(_map);
+        radius: 9, color: '#fff', weight: 2,
+        fillColor: '#3fb950', fillOpacity: 1,
+    }).bindTooltip(`From: ${label}`, { permanent: false }).addTo(_map);
 }
 
 function addDestMarker(lat, lon, label) {
     if (window._destMarker) window._destMarker.remove();
     window._destMarker = L.circleMarker([lat, lon], {
-        radius: 8, color: '#f85149', fillColor: '#f85149', fillOpacity: 0.9, weight: 2,
-    }).bindTooltip(label, { permanent: false }).addTo(_map);
+        radius: 9, color: '#fff', weight: 2,
+        fillColor: '#f85149', fillOpacity: 1,
+    }).bindTooltip(`To: ${label}`, { permanent: false }).addTo(_map);
 }
 
 function clearRouteMarkers() {

@@ -2,6 +2,11 @@ let selectedOrigin = null;
 let selectedDest = null;
 let refreshTimer = null;
 
+// Preserved across auto-refresh so highlighting survives vehicle reload
+let lastVehicles = [];
+let currentSuggestedRefs = [];
+let currentSelectedRef = null;
+
 // ── Initialise ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
@@ -35,7 +40,9 @@ window.loadVehicles = async function loadVehicles(manual = false) {
     try {
         const bbox = getMapBbox();
         const data = await API.getVehicles({ bbox });
-        renderVehicles(data.vehicles);
+        lastVehicles = data.vehicles;
+        // Re-render preserving whatever highlight state is active
+        renderVehicles(lastVehicles, currentSuggestedRefs, currentSelectedRef);
         document.getElementById('vehicle-count').textContent = `${data.count} buses live`;
         document.getElementById('last-updated').textContent =
             'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -109,10 +116,14 @@ async function searchRoutes() {
             selectedDest.lat, selectedDest.lon,
             selectedDest.name
         );
+
+        // Highlight all suggested routes on the map (amber), clear any selected path
+        currentSuggestedRefs = data.routes.map(r => r.lineRef || r.lineName).filter(Boolean);
+        currentSelectedRef = null;
+        clearRoutePath();
+        renderVehicles(lastVehicles, currentSuggestedRefs, null);
+
         displayRoutes(data.routes);
-        if (data.routes.length) {
-            document.getElementById('results-panel').style.display = 'block';
-        }
     } catch (err) {
         showError('Route search failed. Please try again.');
         console.error(err);
@@ -135,11 +146,15 @@ function displayRoutes(routes) {
         return;
     }
 
-    container.innerHTML = routes.map((r, i) => `
+    container.innerHTML = routes.map((r, i) => {
+        const opLabel = r.operatorName && r.operatorName !== r.operatorRef
+            ? `${esc(r.operatorName)} <span class="op-noc">(${esc(r.operatorRef)})</span>`
+            : esc(r.operatorRef || 'Unknown operator');
+        return `
         <div class="route-card" id="route-${i}" onclick="selectRoute('${esc(r.lineRef)}', '${esc(r.lineName)}', ${i})">
             <div class="route-header">
                 <span class="route-badge">${esc(r.lineName || r.lineRef || 'BUS')}</span>
-                <span class="route-operator">${esc(r.operatorRef || 'Unknown operator')}</span>
+                <span class="route-operator">${opLabel}</span>
             </div>
             <div class="route-journey">
                 <span>${esc(r.origin || '—')}</span>
@@ -150,19 +165,40 @@ function displayRoutes(routes) {
                 <span class="distance-badge">~${r.distFromOrigin?.toFixed(1)} km from origin</span>
                 <button class="fare-btn" onclick="loadFares(event, '${esc(r.operatorRef)}')">Fares</button>
             </div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
-function selectRoute(lineRef, lineName, idx) {
+// Called when user clicks a route card
+window.selectRoute = async function selectRoute(lineRef, lineName, idx) {
     document.querySelectorAll('.route-card').forEach(c => c.classList.remove('active'));
     const card = document.getElementById(`route-${idx}`);
     if (card) card.classList.add('active');
-    highlightRoute(lineRef || lineName);
-}
+
+    // Use whichever identifier is valid
+    const ref = (lineRef && lineRef !== 'undefined') ? lineRef
+              : (lineName && lineName !== 'undefined') ? lineName
+              : null;
+
+    currentSelectedRef = ref;
+    renderVehicles(lastVehicles, currentSuggestedRefs, ref);
+
+    // Draw road path between origin and destination
+    if (selectedOrigin && selectedDest) {
+        try {
+            const shape = await API.getRouteShape(
+                selectedOrigin.lat, selectedOrigin.lon,
+                selectedDest.lat, selectedDest.lon
+            );
+            if (shape.geometry) drawRoutePath(shape.geometry);
+        } catch (_) {
+            // Path is best-effort; silently skip if OSRM is unavailable
+        }
+    }
+};
 
 // ── Fares ─────────────────────────────────────────────────────────────────────
 window.loadFares = async function loadFares(eventOrOperator, operatorRef) {
-    // Called from popup (string) or from button (event, string)
     let noc;
     if (typeof eventOrOperator === 'string') {
         noc = eventOrOperator;
@@ -185,11 +221,11 @@ window.loadFares = async function loadFares(eventOrOperator, operatorRef) {
         const data = await API.getFares(noc);
         const results = data.results || [];
         if (!results.length) {
-            content.innerHTML = `<p class="no-fares">No published fare datasets found for operator <strong>${esc(noc)}</strong>.</p>`;
+            content.innerHTML = `<p class="no-fares">No published fare datasets for <strong>${esc(noc)}</strong>.</p>`;
             return;
         }
         content.innerHTML = results.map(f => {
-            const updated = f.modified_date || f.published_at
+            const updated = (f.modified_date || f.published_at)
                 ? new Date(f.modified_date || f.published_at).toLocaleDateString('en-GB')
                 : 'Unknown';
             return `<div class="fare-item">
@@ -207,12 +243,15 @@ window.loadFares = async function loadFares(eventOrOperator, operatorRef) {
 function clearSearch() {
     selectedOrigin = null;
     selectedDest = null;
+    currentSuggestedRefs = [];
+    currentSelectedRef = null;
     document.getElementById('origin-input').value = '';
     document.getElementById('dest-input').value = '';
     document.getElementById('results-panel').style.display = 'none';
     document.getElementById('fares-panel').style.display = 'none';
     clearRouteMarkers();
-    clearHighlight();
+    clearRoutePath();
+    renderVehicles(lastVehicles, [], null);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

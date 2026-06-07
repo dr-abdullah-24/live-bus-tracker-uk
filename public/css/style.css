@@ -121,6 +121,7 @@ input[type="text"]::placeholder { color: var(--text-dim); }
   padding: 2px 8px; border-radius: 5px; min-width: 36px; text-align: center;
 }
 .route-operator { font-size: 12px; color: var(--text-dim); flex: 1; }
+.op-noc { font-size: 11px; color: var(--border); }
 
 .route-journey { font-size: 13px; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .journey-arrow { color: var(--accent); font-size: 16px; }

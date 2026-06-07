@@ -28,6 +28,17 @@ const API = {
         return res.json();
     },
 
+    async getRouteShape(originLat, originLon, destLat, destLon) {
+        const url = new URL('/api/route-shape', location.origin);
+        url.searchParams.set('originLat', originLat);
+        url.searchParams.set('originLon', originLon);
+        url.searchParams.set('destLat', destLat);
+        url.searchParams.set('destLon', destLon);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Route shape error ${res.status}`);
+        return res.json();
+    },
+
     async getFares(operator) {
         const url = new URL('/api/fares', location.origin);
         if (operator) url.searchParams.set('operator', operator);
